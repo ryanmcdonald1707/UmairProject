@@ -1,8 +1,10 @@
 #include "raylib.h"
 #include <unordered_map>
+#include <cstdlib>
 
 const int GRID_SIZE = 10;
 const int TILE = 56;
+const int MOVE_RANGE = 3;
 
 struct Unit {
     int x, y;
@@ -12,6 +14,12 @@ struct Unit {
 int tileKey(int x, int y)
 {
     return y * GRID_SIZE + x;
+}
+
+//Manhatten distance getter for diagonals
+int distance(int x1, int y1, int x2, int y2)
+{
+    return abs(x1 - x2) + abs(y1 - y2);
 }
 
 int main() {
