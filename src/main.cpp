@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include <unordered_map>
 
 const int GRID_SIZE = 10;
 const int TILE = 56;
@@ -7,6 +8,11 @@ struct Unit {
     int x, y;
     bool isPlayer;
 };
+
+int tileKey(int x, int y)
+{
+    return y * GRID_SIZE + x;
+}
 
 int main() {
     InitWindow(GRID_SIZE * TILE, GRID_SIZE * TILE, "Arena Tactics");
@@ -19,8 +25,35 @@ int main() {
         {8, 6, false},
     };
 
+    std::unordered_map<int, int> tileToUnit;
+
+    for (int i = 0; i < 4; i++)
+    {
+        tileToUnit[tileKey(units[i].x, units[i].y)] = i;
+    }
+
+    int selected = -1; //Nothing.
+
     while (!WindowShouldClose())
     {
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        {
+            Vector2 mouse = GetMousePosition();
+            int tx = (int)(mouse.x / TILE);
+            int ty = (int)(mouse.y / TILE);
+
+            auto it = tileToUnit.find(tileKey(tx, ty));
+            if (it != tileToUnit.end())
+            {
+                selected = it->second;
+            }
+            else
+            {
+                selected = -1;
+            }
+        }
+
+
         BeginDrawing();
         ClearBackground(BLACK);
 
@@ -38,6 +71,10 @@ int main() {
         {
             Color c = units[i].isPlayer ? BLUE : RED;
             DrawRectangle(units[i].x * TILE + 8, units[i].y * TILE + 8, TILE - 18, TILE - 18, c);
+            if (i == selected)
+            {
+                DrawRectangleLines(units[i].x * TILE, units[i].y * TILE, TILE - 2, TILE - 2, YELLOW);
+            }
         }
         EndDrawing();
     }
