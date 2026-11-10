@@ -16,7 +16,7 @@ int tileKey(int x, int y)
     return y * GRID_SIZE + x;
 }
 
-//Manhatten distance getter for diagonals
+//Manhatten distance getter for distance with no diag
 int distance(int x1, int y1, int x2, int y2)
 {
     return abs(x1 - x2) + abs(y1 - y2);
@@ -55,6 +55,14 @@ int main() {
             {
                 selected = it->second;
             }
+            else if (selected != -1 && distance(units[selected].x, units[selected].y, tx, ty) <= MOVE_RANGE)
+            {
+                tileToUnit.erase(tileKey(units[selected].x, units[selected].y));
+                units[selected].x = tx;
+                units[selected].y = ty;
+                tileToUnit[tileKey(tx, ty)] = selected;
+                selected = -1;
+            }
             else
             {
                 selected = -1;
@@ -70,7 +78,13 @@ int main() {
         {
             for (int x = 0; x < GRID_SIZE; x++)
             {
-                DrawRectangle(x * TILE, y * TILE, TILE - 2, TILE - 2, DARKGRAY);
+                Color c = DARKGRAY;
+                if (selected != -1 && distance(units[selected].x, units[selected].y, x, y) <= MOVE_RANGE
+                    && tileToUnit.find(tileKey(x, y)) == tileToUnit.end())
+                {
+                    c = Color{ 60, 90, 140, 255 };
+                }
+                DrawRectangle(x * TILE, y * TILE, TILE - 2, TILE - 2, c);
             }
         }
 
