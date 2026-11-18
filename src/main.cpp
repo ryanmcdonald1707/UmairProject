@@ -7,6 +7,7 @@
 const int GRID_SIZE = 10;
 const int TILE = 56;
 const int MOVE_RANGE = 3;
+const int ATTACK_RANGE = 1;
 const int PANEL_WIDTH = 240;
 
 struct Unit {
@@ -156,6 +157,55 @@ private:
     int count = 0;
 };
 
+
+//removes unit from everything tracked
+void killUnit(int id, std::unordered_map<int, Unit>& units,
+              std::unordered_map<int, int>& tileToUnit, TurnOrder& turns)
+{
+    tileToUnit.erase(tileKey(units.at(id).x, units.at(id).y));
+    turns.remove(id);
+    units.erase(id);
+}
+
+//applies damage to target
+bool attackUnit(int attackerId, int targetId, std::unordered_map<int, Unit>& units,
+                std::unordered_map<int, int>& tileToUnit, TurnOrder& turns)
+{
+    Unit& target = units.at(targetId);
+    target.hp -= units.at(attackerId).attack;
+    if (target.hp <= 0)
+    {
+        killUnit(targetId, units, tileToUnit, turns);
+        return true;
+    }
+    return false;
+}
+
+bool hasEnemyInRange(int id, const std::unordered_map<int, Unit>& units)
+{
+    const Unit& me = units.at(id);
+    for (auto& [otherId, other] : units)
+    {
+        if (other.isPlayer != me.isPlayer && distance(me.x, me.y, other.x, other.y) <= ATTACK_RANGE)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+//how many are left
+int countSide(const std::unordered_map<int, Unit>& units, bool isPlayer)
+{
+    int n = 0;
+    for (auto& [id, u] : units)
+    {
+        if (u.isPlayer == isPlayer) n++;
+    }
+    return n;
+}
+
+
 int main() {
     InitWindow(GRID_SIZE * TILE + PANEL_WIDTH, GRID_SIZE * TILE, "Arena Tactics");
     SetTargetFPS(60);
@@ -178,19 +228,22 @@ int main() {
     turns.build(units);
 
     int selected = -1; //Nothing.
+    bool moved = false; //has moved?
 
     while (!WindowShouldClose())
     {
         int active = turns.currentUnit();
         bool playerTurn = (active != -1) && units.at(active).isPlayer;
+        bool gameOver = countSide(units, true) == 0 || countSide(units, false) == 0;
 
-        if (IsKeyPressed(KEY_SPACE))
+        if (!gameOver && IsKeyPressed(KEY_SPACE))
         {
             //Skip turn/End Turns
             turns.advance();
             selected = -1;
+            moved = false;
         }
-        else if (playerTurn && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        else if (!gameOver && playerTurn && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         {
             Vector2 mouse = GetMousePosition();
             int tx = (int)(mouse.x / TILE);
@@ -201,20 +254,44 @@ int main() {
                 auto it = tileToUnit.find(tileKey(tx, ty));
                 if (it != tileToUnit.end())
                 {
-                    //select only the units whos turn it is.
-                    selected = (it->second == active) ? active : -1;
+                    int clicked = it->second;
+                    const Unit& me = units.at(active);
+                    const Unit& other = units.at(clicked);
+
+                    if (clicked == active)
+                    {
+                        //select only the unit whose turn it is
+                        selected = active;
+                    }
+                    else if (selected == active && !other.isPlayer
+                             && distance(me.x, me.y, other.x, other.y) <= ATTACK_RANGE)
+                    {
+                        attackUnit(active, clicked, units, tileToUnit, turns);
+                        //attacking ends the turn
+                        turns.advance();
+                        selected = -1;
+                        moved = false;
+                    }
                 }
-                else if (selected == active && distance(units.at(selected).x, units.at(selected).y, tx, ty) <= MOVE_RANGE)
+                else if (selected == active && !moved
+                         && distance(units.at(selected).x, units.at(selected).y, tx, ty) <= MOVE_RANGE)
                 {
                     Unit& u = units.at(selected);
                     tileToUnit.erase(tileKey(u.x, u.y));
                     u.x = tx;
                     u.y = ty;
                     tileToUnit[tileKey(tx, ty)] = selected;
-                    selected = -1;
-                    turns.advance(); //moving ends turn
+                    moved = true;
+
+                    if (!hasEnemyInRange(active, units))
+                    {
+                        //nothing to attack moving ends the turn
+                        turns.advance();
+                        selected = -1;
+                        moved = false;
+                    }
                 }
-                else
+                else if (!moved)
                 {
                     selected = -1;
                 }
@@ -233,7 +310,7 @@ int main() {
             for (int x = 0; x < GRID_SIZE; x++)
             {
                 Color c = DARKGRAY;
-                if (selected != -1 && distance(units.at(selected).x, units.at(selected).y, x, y) <= MOVE_RANGE
+                if (selected != -1 && !moved && distance(units.at(selected).x, units.at(selected).y, x, y) <= MOVE_RANGE
                     && tileToUnit.find(tileKey(x, y)) == tileToUnit.end())
                 {
                     c = Color{ 60, 90, 140, 255 };
@@ -262,6 +339,12 @@ int main() {
             {
                 DrawRectangleLines(u.x * TILE, u.y * TILE, TILE - 2, TILE - 2, YELLOW);
             }
+            //orange outline = enemy you can attack right now
+            if (selected != -1 && !u.isPlayer
+                && distance(units.at(selected).x, units.at(selected).y, u.x, u.y) <= ATTACK_RANGE)
+            {
+                DrawRectangleLinesEx(Rectangle{ (float)(u.x * TILE), (float)(u.y * TILE), (float)(TILE - 2), (float)(TILE - 2) }, 3, ORANGE);
+            }
         }
 
         //Draw Turn Order Panel
@@ -284,13 +367,26 @@ int main() {
         if (activeId != -1 && units.at(activeId).isPlayer)
         {
             DrawText("Your turn:", px, lineY, 18, LIGHTGRAY);
-            DrawText("click unit, then a tile", px, lineY + 22, 18, LIGHTGRAY);
+            DrawText(moved ? "click enemy to attack" : "click unit, then a tile", px, lineY + 22, 18, LIGHTGRAY);
         }
         else
         {
             DrawText("Enemy turn", px, lineY, 18, LIGHTGRAY);
         }
         DrawText("SPACE: end turn", px, lineY + 50, 18, GRAY);
+
+        //game over screen
+        int playersLeft = countSide(units, true);
+        int enemiesLeft = countSide(units, false);
+        if (playersLeft == 0 || enemiesLeft == 0)
+        {
+            const char* msg = (enemiesLeft == 0) ? "VICTORY" : "DEFEAT";
+            int msgSize = 60;
+            DrawRectangle(0, 0, GRID_SIZE * TILE, GRID_SIZE * TILE, Color{ 0, 0, 0, 170 });
+            DrawText(msg, (GRID_SIZE * TILE - MeasureText(msg, msgSize)) / 2,
+                     GRID_SIZE * TILE / 2 - msgSize / 2, msgSize,
+                     enemiesLeft == 0 ? GOLD : RED);
+        }
         EndDrawing();
     }
     CloseWindow();
