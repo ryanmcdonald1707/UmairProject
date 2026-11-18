@@ -157,7 +157,7 @@ private:
 };
 
 int main() {
-    InitWindow(GRID_SIZE * TILE, GRID_SIZE * TILE, "Arena Tactics");
+    InitWindow(GRID_SIZE * TILE + PANEL_WIDTH, GRID_SIZE * TILE, "Arena Tactics");
     SetTargetFPS(60);
 
     std::unordered_map<int, Unit> units;  
@@ -174,40 +174,58 @@ int main() {
         tileToUnit[tileKey(u.x, u.y)] = id;
     }
 
+    TurnOrder turns;
+    turns.build(units);
 
     int selected = -1; //Nothing.
 
     while (!WindowShouldClose())
     {
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        int active = turns.currentUnit();
+        bool playerTurn = (active != -1) && units.at(active).isPlayer;
+
+        if (IsKeyPressed(KEY_SPACE))
+        {
+            //Skip turn/End Turns
+            turns.advance();
+            selected = -1;
+        }
+        else if (playerTurn && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         {
             Vector2 mouse = GetMousePosition();
             int tx = (int)(mouse.x / TILE);
             int ty = (int)(mouse.y / TILE);
 
-            auto it = tileToUnit.find(tileKey(tx, ty));
-            if (it != tileToUnit.end())
+            if (tx < GRID_SIZE && ty < GRID_SIZE)
             {
-                selected = it->second;
-            }
-            else if (selected != -1 && distance(units.at(selected).x, units.at(selected).y, tx, ty) <= MOVE_RANGE)
-            {
-                Unit& u = units.at(selected);
-                tileToUnit.erase(tileKey(u.x, u.y));
-                u.x = tx;
-                u.y = ty;
-                tileToUnit[tileKey(tx, ty)] = selected;
-                selected = -1;
-            }
-            else
-            {
-                selected = -1;
+                auto it = tileToUnit.find(tileKey(tx, ty));
+                if (it != tileToUnit.end())
+                {
+                    //select only the units whos turn it is.
+                    selected = (it->second == active) ? active : -1;
+                }
+                else if (selected == active && distance(units.at(selected).x, units.at(selected).y, tx, ty) <= MOVE_RANGE)
+                {
+                    Unit& u = units.at(selected);
+                    tileToUnit.erase(tileKey(u.x, u.y));
+                    u.x = tx;
+                    u.y = ty;
+                    tileToUnit[tileKey(tx, ty)] = selected;
+                    selected = -1;
+                    turns.advance(); //moving ends turn
+                }
+                else
+                {
+                    selected = -1;
+                }
             }
         }
 
 
+
         BeginDrawing();
         ClearBackground(BLACK);
+        int activeId = turns.currentUnit();
 
         //Draw Grid
         for (int y = 0; y < GRID_SIZE; y++)
@@ -235,11 +253,44 @@ int main() {
             int centerX = u.x * TILE + 8 + squareSize / 2;
             int centerY = u.y * TILE + 8 + squareSize / 2;
             DrawText(hpText, centerX - MeasureText(hpText, fontSize) / 2, centerY - fontSize / 2, fontSize, WHITE);
+            if (id == activeId)
+            {
+                //green = this guys turn
+                DrawRectangleLinesEx(Rectangle{ (float)(u.x * TILE), (float)(u.y * TILE), (float)(TILE - 2), (float)(TILE - 2) }, 3, GREEN);
+            }
             if (id == selected)
             {
                 DrawRectangleLines(u.x * TILE, u.y * TILE, TILE - 2, TILE - 2, YELLOW);
             }
         }
+
+        //Draw Turn Order Panel
+        int px = GRID_SIZE * TILE + 12;
+        DrawText("TURN ORDER", px, 12, 20, WHITE);
+
+        int lineY = 44;
+        for (int id : turns.order())
+        {
+            const Unit& u = units.at(id);
+            const char* label = TextFormat("%s %s %d (init %d)",
+                                        id == activeId ? ">" : " ",
+                                        u.isPlayer ? "Player" : "Enemy",
+                                        id, u.initiative);
+            DrawText(label, px, lineY, 18, u.isPlayer ? SKYBLUE : RED);
+            lineY += 24;
+        }
+
+        lineY += 16;
+        if (activeId != -1 && units.at(activeId).isPlayer)
+        {
+            DrawText("Your turn:", px, lineY, 18, LIGHTGRAY);
+            DrawText("click unit, then a tile", px, lineY + 22, 18, LIGHTGRAY);
+        }
+        else
+        {
+            DrawText("Enemy turn", px, lineY, 18, LIGHTGRAY);
+        }
+        DrawText("SPACE: end turn", px, lineY + 50, 18, GRAY);
         EndDrawing();
     }
     CloseWindow();
