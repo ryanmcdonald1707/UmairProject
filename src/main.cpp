@@ -206,12 +206,28 @@ int countSide(const std::unordered_map<int, Unit>& units, bool isPlayer)
 }
 
 
-int main() {
-    InitWindow(GRID_SIZE * TILE + PANEL_WIDTH, GRID_SIZE * TILE, "Arena Tactics");
-    SetTargetFPS(60);
+enum class Screen { Menu, Playing };
 
-    std::unordered_map<int, Unit> units;  
-    std::unordered_map<int, int> tileToUnit; 
+//draws button, true if clicked this frame
+bool menuButton(Rectangle r, const char* text)
+{
+    bool hover = CheckCollisionPointRec(GetMousePosition(), r);
+    DrawRectangleRec(r, hover ? Color{ 80, 80, 80, 255 } : Color{ 50, 50, 50, 255 });
+    DrawRectangleLinesEx(r, 2, hover ? YELLOW : LIGHTGRAY);
+
+    int fontSize = 24;
+    DrawText(text, (int)(r.x + (r.width - MeasureText(text, fontSize)) / 2),
+             (int)(r.y + (r.height - fontSize) / 2), fontSize, WHITE);
+
+    return hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+}
+
+//puts everything back to start
+void resetGame(std::unordered_map<int, Unit>& units, std::unordered_map<int, int>& tileToUnit,
+               TurnOrder& turns, int& selected, bool& moved)
+{
+    units.clear();
+    tileToUnit.clear();
 
     //          id  x  y  player  hp maxHp atk init
     units[0] = { 0, 1, 3, true,   10, 10,   4,  7 };
@@ -223,20 +239,70 @@ int main() {
     {
         tileToUnit[tileKey(u.x, u.y)] = id;
     }
-
-    TurnOrder turns;
     turns.build(units);
+    selected = -1;
+    moved = false;
+}
+
+
+int main() {
+    InitWindow(GRID_SIZE * TILE + PANEL_WIDTH, GRID_SIZE * TILE, "Arena Tactics");
+    SetTargetFPS(60);
+
+    std::unordered_map<int, Unit> units;
+    std::unordered_map<int, int> tileToUnit;
+    TurnOrder turns;
 
     int selected = -1; //Nothing.
     bool moved = false; //has moved?
 
-    while (!WindowShouldClose())
+    Screen screen = Screen::Menu;
+    bool quit = false;
+
+    while (!WindowShouldClose() && !quit)
     {
+        //Draw Menu
+        if (screen == Screen::Menu)
+        {
+            BeginDrawing();
+            ClearBackground(BLACK);
+
+            int w = GetScreenWidth();
+            const char* title = "ARENA TACTICS";
+            int titleSize = 60;
+            DrawText(title, (w - MeasureText(title, titleSize)) / 2, 120, titleSize, GOLD);
+
+            Rectangle playBtn = Rectangle{ (float)(w / 2 - 100), 260, 200, 50 };
+            Rectangle quitBtn = Rectangle{ (float)(w / 2 - 100), 330, 200, 50 };
+
+            if (menuButton(playBtn, "PLAY") || IsKeyPressed(KEY_ENTER))
+            {
+                //fresh game every time
+                resetGame(units, tileToUnit, turns, selected, moved);
+                screen = Screen::Playing;
+            }
+            if (menuButton(quitBtn, "QUIT"))
+            {
+                quit = true;
+            }
+
+            const char* hint = "click PLAY or press ENTER";
+            DrawText(hint, (w - MeasureText(hint, 18)) / 2, 410, 18, GRAY);
+
+            EndDrawing();
+            continue; //skip game code while on menu
+        }
+
         int active = turns.currentUnit();
         bool playerTurn = (active != -1) && units.at(active).isPlayer;
         bool gameOver = countSide(units, true) == 0 || countSide(units, false) == 0;
 
-        if (!gameOver && IsKeyPressed(KEY_SPACE))
+        if (gameOver && IsKeyPressed(KEY_ENTER))
+        {
+            //back to menu
+            screen = Screen::Menu;
+        }
+        else if (!gameOver && IsKeyPressed(KEY_SPACE))
         {
             //Skip turn/End Turns
             turns.advance();
@@ -386,6 +452,9 @@ int main() {
             DrawText(msg, (GRID_SIZE * TILE - MeasureText(msg, msgSize)) / 2,
                      GRID_SIZE * TILE / 2 - msgSize / 2, msgSize,
                      enemiesLeft == 0 ? GOLD : RED);
+            const char* backText = "ENTER: main menu";
+            DrawText(backText, (GRID_SIZE * TILE - MeasureText(backText, 20)) / 2,
+                     GRID_SIZE * TILE / 2 + 50, 20, LIGHTGRAY);
         }
         EndDrawing();
     }
