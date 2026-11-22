@@ -32,6 +32,18 @@ int distance(int x1, int y1, int x2, int y2)
     return abs(x1 - x2) + abs(y1 - y2);
 }
 
+Font gameFont; 
+
+void drawText(const char* text, int x, int y, int fontSize, Color color)
+{
+    DrawTextEx(gameFont, text, Vector2{ (float)x, (float)y }, (float)fontSize, 1.0f, color);
+}
+
+int measureText(const char* text, int fontSize)
+{
+    return (int)MeasureTextEx(gameFont, text, (float)fontSize, 1.0f).x;
+}
+
 struct TurnNode {
     int unitId;
     TurnNode* next;
@@ -216,7 +228,7 @@ bool menuButton(Rectangle r, const char* text)
     DrawRectangleLinesEx(r, 2, hover ? YELLOW : LIGHTGRAY);
 
     int fontSize = 24;
-    DrawText(text, (int)(r.x + (r.width - MeasureText(text, fontSize)) / 2),
+    drawText(text, (int)(r.x + (r.width - measureText(text, fontSize)) / 2),
              (int)(r.y + (r.height - fontSize) / 2), fontSize, WHITE);
 
     return hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
@@ -249,6 +261,10 @@ int main() {
     InitWindow(GRID_SIZE * TILE + PANEL_WIDTH, GRID_SIZE * TILE, "Arena Tactics");
     SetTargetFPS(60);
 
+    //load big so it stays sharp when drawn smaller
+    gameFont = LoadFontEx(TextFormat("%sassets/fonts/Roboto-Regular.ttf", GetApplicationDirectory()), 64, nullptr, 0);
+    SetTextureFilter(gameFont.texture, TEXTURE_FILTER_BILINEAR);
+
     std::unordered_map<int, Unit> units;
     std::unordered_map<int, int> tileToUnit;
     TurnOrder turns;
@@ -270,7 +286,7 @@ int main() {
             int w = GetScreenWidth();
             const char* title = "ARENA TACTICS";
             int titleSize = 60;
-            DrawText(title, (w - MeasureText(title, titleSize)) / 2, 120, titleSize, GOLD);
+            drawText(title, (w - measureText(title, titleSize)) / 2, 120, titleSize, GOLD);
 
             Rectangle playBtn = Rectangle{ (float)(w / 2 - 100), 260, 200, 50 };
             Rectangle quitBtn = Rectangle{ (float)(w / 2 - 100), 330, 200, 50 };
@@ -287,7 +303,7 @@ int main() {
             }
 
             const char* hint = "click PLAY or press ENTER";
-            DrawText(hint, (w - MeasureText(hint, 18)) / 2, 410, 18, GRAY);
+            drawText(hint, (w - measureText(hint, 18)) / 2, 410, 18, GRAY);
 
             EndDrawing();
             continue; //skip game code while on menu
@@ -395,7 +411,7 @@ int main() {
             int squareSize = TILE - 18;
             int centerX = u.x * TILE + 8 + squareSize / 2;
             int centerY = u.y * TILE + 8 + squareSize / 2;
-            DrawText(hpText, centerX - MeasureText(hpText, fontSize) / 2, centerY - fontSize / 2, fontSize, WHITE);
+            drawText(hpText, centerX - measureText(hpText, fontSize) / 2, centerY - fontSize / 2, fontSize, WHITE);
             if (id == activeId)
             {
                 //green = this guys turn
@@ -415,7 +431,7 @@ int main() {
 
         //Draw Turn Order Panel
         int px = GRID_SIZE * TILE + 12;
-        DrawText("TURN ORDER", px, 12, 20, WHITE);
+        drawText("TURN ORDER", px, 12, 20, WHITE);
 
         int lineY = 44;
         for (int id : turns.order())
@@ -425,21 +441,21 @@ int main() {
                                         id == activeId ? ">" : " ",
                                         u.isPlayer ? "Player" : "Enemy",
                                         id, u.initiative);
-            DrawText(label, px, lineY, 18, u.isPlayer ? SKYBLUE : RED);
+            drawText(label, px, lineY, 18, u.isPlayer ? SKYBLUE : RED);
             lineY += 24;
         }
 
         lineY += 16;
         if (activeId != -1 && units.at(activeId).isPlayer)
         {
-            DrawText("Your turn:", px, lineY, 18, LIGHTGRAY);
-            DrawText(moved ? "click enemy to attack" : "click unit, then a tile", px, lineY + 22, 18, LIGHTGRAY);
+            drawText("Your turn:", px, lineY, 18, LIGHTGRAY);
+            drawText(moved ? "click enemy to attack" : "click unit, then a tile", px, lineY + 22, 18, LIGHTGRAY);
         }
         else
         {
-            DrawText("Enemy turn", px, lineY, 18, LIGHTGRAY);
+            drawText("Enemy turn", px, lineY, 18, LIGHTGRAY);
         }
-        DrawText("SPACE: end turn", px, lineY + 50, 18, GRAY);
+        drawText("SPACE: end turn", px, lineY + 50, 18, GRAY);
 
         //game over screen
         int playersLeft = countSide(units, true);
@@ -449,14 +465,15 @@ int main() {
             const char* msg = (enemiesLeft == 0) ? "VICTORY" : "DEFEAT";
             int msgSize = 60;
             DrawRectangle(0, 0, GRID_SIZE * TILE, GRID_SIZE * TILE, Color{ 0, 0, 0, 170 });
-            DrawText(msg, (GRID_SIZE * TILE - MeasureText(msg, msgSize)) / 2,
+            drawText(msg, (GRID_SIZE * TILE - measureText(msg, msgSize)) / 2,
                      GRID_SIZE * TILE / 2 - msgSize / 2, msgSize,
                      enemiesLeft == 0 ? GOLD : RED);
             const char* backText = "ENTER: main menu";
-            DrawText(backText, (GRID_SIZE * TILE - MeasureText(backText, 20)) / 2,
+            drawText(backText, (GRID_SIZE * TILE - measureText(backText, 20)) / 2,
                      GRID_SIZE * TILE / 2 + 50, 20, LIGHTGRAY);
         }
         EndDrawing();
     }
+    UnloadFont(gameFont);
     CloseWindow();
 }

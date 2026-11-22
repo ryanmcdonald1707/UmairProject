@@ -9,3 +9,7 @@ add_subdirectory(vendor/raylib)
 
 add_executable(ArenaTactics src/main.cpp)
 target_link_libraries(ArenaTactics PRIVATE raylib)
+
+# copy assets (fonts etc) next to the exe after each build
+add_custom_command(TARGET ArenaTactics POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:ArenaTactics>/assets)
