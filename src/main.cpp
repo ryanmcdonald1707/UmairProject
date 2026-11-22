@@ -3,12 +3,14 @@
 #include <cstdlib>
 #include <vector>
 #include <algorithm>
+#include <queue>
 
 const int GRID_SIZE = 10;
 const int TILE = 56;
 const int MOVE_RANGE = 3;
 const int ATTACK_RANGE = 1;
 const int PANEL_WIDTH = 240;
+const float ENEMY_DELAY = 0.6f;
 
 struct Unit {
     int id;
@@ -217,7 +219,102 @@ int countSide(const std::unordered_map<int, Unit>& units, bool isPlayer)
     return n;
 }
 
+//one possible target for enemy ai
+struct Target {
+    int unitId;
+    int score;
 
+    //priority_queue puts biggest score on top
+    bool operator<(const Target& other) const { return score < other.score; }
+};
+
+//scores every player unit, low hp + close = higher score
+std::priority_queue<Target> rankTargets(int id, const std::unordered_map<int, Unit>& units)
+{
+    std::priority_queue<Target> targets;
+    const Unit& me = units.at(id);
+    for (auto& [otherId, other] : units)
+    {
+        if (other.isPlayer)
+        {
+            int score = 100 - other.hp * 2 - distance(me.x, me.y, other.x, other.y);
+            targets.push(Target{ otherId, score });
+        }
+    }
+    return targets;
+}
+
+//goes down the queue and attacks first one in range
+bool attackBest(int id, std::priority_queue<Target>& targets, std::unordered_map<int, Unit>& units,
+                std::unordered_map<int, int>& tileToUnit, TurnOrder& turns)
+{
+    while (!targets.empty())
+    {
+        int targetId = targets.top().unitId;
+        const Unit& me = units.at(id);
+        const Unit& t = units.at(targetId);
+        if (distance(me.x, me.y, t.x, t.y) <= ATTACK_RANGE)
+        {
+            attackUnit(id, targetId, units, tileToUnit, turns);
+            return true;
+        }
+        targets.pop(); //out of range, try next best
+    }
+    return false;
+}
+
+//moves as close as it can to target
+void moveToward(int id, int targetId, std::unordered_map<int, Unit>& units,
+                std::unordered_map<int, int>& tileToUnit)
+{
+    Unit& me = units.at(id);
+    const Unit& target = units.at(targetId);
+
+    int bestX = me.x;
+    int bestY = me.y;
+    int bestDist = distance(me.x, me.y, target.x, target.y);
+
+    for (int y = 0; y < GRID_SIZE; y++)
+    {
+        for (int x = 0; x < GRID_SIZE; x++)
+        {
+            //skip tiles too far or taken
+            if (distance(me.x, me.y, x, y) > MOVE_RANGE) continue;
+            if (tileToUnit.find(tileKey(x, y)) != tileToUnit.end()) continue;
+
+            int d = distance(x, y, target.x, target.y);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestX = x;
+                bestY = y;
+            }
+        }
+    }
+
+    tileToUnit.erase(tileKey(me.x, me.y));
+    me.x = bestX;
+    me.y = bestY;
+    tileToUnit[tileKey(me.x, me.y)] = id;
+}
+
+//whole enemy turn, attack if it can otherwise move then try again
+void enemyTurn(int id, std::unordered_map<int, Unit>& units,
+               std::unordered_map<int, int>& tileToUnit, TurnOrder& turns)
+{
+    std::priority_queue<Target> targets = rankTargets(id, units);
+    if (targets.empty()) return;
+
+    int bestId = targets.top().unitId;
+    if (attackBest(id, targets, units, tileToUnit, turns)) return;
+
+    //nobody in range so walk to the best one
+    moveToward(id, bestId, units, tileToUnit);
+
+    //rerank since distances changed
+    targets = rankTargets(id, units);
+    attackBest(id, targets, units, tileToUnit, turns);
+}
 enum class Screen { Menu, Playing };
 
 //draws button, true if clicked this frame
@@ -271,7 +368,7 @@ int main() {
 
     int selected = -1; //Nothing.
     bool moved = false; //has moved?
-
+    float enemyTimer = 0.0f; //delay before enemy acts
     Screen screen = Screen::Menu;
     bool quit = false;
 
@@ -318,7 +415,7 @@ int main() {
             //back to menu
             screen = Screen::Menu;
         }
-        else if (!gameOver && IsKeyPressed(KEY_SPACE))
+        else if (!gameOver && playerTurn && IsKeyPressed(KEY_SPACE))
         {
             //Skip turn/End Turns
             turns.advance();
@@ -379,8 +476,17 @@ int main() {
                 }
             }
         }
-
-
+        else if (!gameOver && !playerTurn && active != -1)
+        {
+            //wait a bit so you can see what the enemy does
+            enemyTimer += GetFrameTime();
+            if (enemyTimer >= ENEMY_DELAY)
+            {
+                enemyTurn(active, units, tileToUnit, turns);
+                turns.advance();
+                enemyTimer = 0.0f;
+            }
+        }
 
         BeginDrawing();
         ClearBackground(BLACK);
@@ -450,12 +556,12 @@ int main() {
         {
             drawText("Your turn:", px, lineY, 18, LIGHTGRAY);
             drawText(moved ? "click enemy to attack" : "click unit, then a tile", px, lineY + 22, 18, LIGHTGRAY);
+            drawText("SPACE: end turn", px, lineY + 50, 18, GRAY);
         }
         else
         {
-            drawText("Enemy turn", px, lineY, 18, LIGHTGRAY);
+            drawText("Enemy thinking...", px, lineY, 18, LIGHTGRAY);
         }
-        drawText("SPACE: end turn", px, lineY + 50, 18, GRAY);
 
         //game over screen
         int playersLeft = countSide(units, true);
